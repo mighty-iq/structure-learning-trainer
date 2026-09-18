@@ -1,0 +1,1213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Structure Learning Trainer</title>
+<meta name="description" content="A browser rebuild of the Cambridge structure-learning task: predict the next glyph in a hidden Markov stream across ten tiers of difficulty.">
+<meta name="theme-color" content="#06080D">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%2306080D'/%3E%3Cg fill='none' stroke='%2357C7FF' stroke-width='9' stroke-linecap='round'%3E%3Cpath d='M50 84V42'/%3E%3Cpath d='M28 42a22 22 0 0 1 44 0'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  :root{ padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+  html,body{ margin:0; }
+  [hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@400;500;600&display=swap">
+
+<style>
+/* ══ tokens — deliberately single-theme: this is an instrument screen ══ */
+:root{
+  color-scheme:dark;
+  --bg:#06080D;
+  --bg-2:#090D15;
+  --panel:#0D131F;
+  --panel-2:#121A29;
+  --line:#1C2637;
+  --line-hi:#33425C;
+  --ink:#E3EBF7;
+  --ink-2:#A6B4CB;
+  --muted:#6B7B95;
+  --blue:#57C7FF;
+  --violet:#9B8CFF;
+  --amber:#FFB454;
+  --good:#4FE0A8;
+  --bad:#FF6B7A;
+  --field:#080C14;
+  --field-ink:#E8F2FF;
+  --field-line:#233047;
+  --glow:0 0 18px rgba(87,199,255,.35);
+  --ff-disp:"Chakra Petch","Arial Narrow",sans-serif;
+  --ff-body:"Sora","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --ff-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+:root[data-chamber="lab"]{ --field:#8C8F8C; --field-ink:#0D1011; --field-line:#6E7270; }
+
+*{box-sizing:border-box}
+body{
+  margin:0; color:var(--ink); font-family:var(--ff-body); font-size:15px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  background:
+    radial-gradient(1100px 620px at 50% -10%, rgba(87,199,255,.10), transparent 62%),
+    radial-gradient(760px 520px at 88% 8%, rgba(155,140,255,.08), transparent 60%),
+    var(--bg);
+  background-attachment:fixed;
+}
+body::before{            /* faint technical grid */
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.5;
+  background-image:linear-gradient(rgba(87,199,255,.045) 1px, transparent 1px),
+                   linear-gradient(90deg, rgba(87,199,255,.045) 1px, transparent 1px);
+  background-size:52px 52px;
+  -webkit-mask-image:radial-gradient(900px 620px at 50% 0%, #000 12%, transparent 76%);
+          mask-image:radial-gradient(900px 620px at 50% 0%, #000 12%, transparent 76%);
+}
+.wrap{position:relative; z-index:1; max-width:920px; margin:0 auto; padding-inline:20px; padding-block:0 64px}
+
+/* ══ type ═══════════════════════════════════════════════════════════ */
+h1,h2,h3{margin:0; text-wrap:balance; line-height:1.18}
+h1{font-family:var(--ff-disp); font-weight:700; font-size:clamp(32px,6.4vw,54px); letter-spacing:-.015em; text-transform:uppercase}
+h2{font-family:var(--ff-disp); font-weight:600; font-size:20px; letter-spacing:.01em; text-transform:uppercase}
+h3{font-family:var(--ff-disp); font-weight:600; font-size:14px; letter-spacing:.05em; text-transform:uppercase}
+p{margin:0}
+.lbl{font-family:var(--ff-disp); font-weight:600; font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted)}
+.lede{font-size:16.5px; color:var(--ink-2); max-width:60ch}
+.prose{color:var(--ink-2); max-width:66ch}
+.small{font-size:13px; color:var(--muted)}
+.num{font-family:var(--ff-mono); font-variant-numeric:tabular-nums; font-weight:500}
+.hl{color:var(--blue)}
+a{color:var(--blue); text-underline-offset:3px}
+a:hover{color:#9ADCFF}
+:focus-visible{outline:2px solid var(--blue); outline-offset:3px; border-radius:2px}
+
+/* ══ chrome ═════════════════════════════════════════════════════════ */
+.topbar{display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding-block:20px 0}
+.mark{display:flex; align-items:center; gap:10px}
+.mark .dot{width:9px; height:9px; border-radius:50%; background:var(--blue); box-shadow:var(--glow)}
+.mark b{font-family:var(--ff-disp); font-weight:700; font-size:15px; letter-spacing:.22em; text-transform:uppercase}
+.topnav{display:flex; align-items:center; gap:16px; font-size:13px}
+
+/* ══ HUD ════════════════════════════════════════════════════════════ */
+.hud{
+  display:grid; grid-template-columns:auto 1fr auto auto; align-items:center; gap:16px;
+  border:1px solid var(--line); border-radius:4px; background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  padding:11px 14px; margin-block:18px 26px;
+}
+.rankbox{display:flex; align-items:center; gap:10px; min-width:0}
+.badge{
+  width:38px; height:38px; flex:none; display:grid; place-items:center; border-radius:3px;
+  font-family:var(--ff-mono); font-weight:700; font-size:15px; color:#04121B;
+  background:linear-gradient(145deg,var(--blue),var(--violet)); box-shadow:var(--glow);
+}
+.rankbox .nm{font-family:var(--ff-disp); font-weight:700; font-size:14.5px; letter-spacing:.12em; text-transform:uppercase; line-height:1.15}
+.rankbox .sb{font-family:var(--ff-mono); font-size:10.5px; color:var(--muted); white-space:nowrap}
+.xpwrap{min-width:90px}
+.xprow{display:flex; justify-content:space-between; gap:8px; font-family:var(--ff-mono); font-size:10px; color:var(--muted); letter-spacing:.08em; margin-bottom:5px}
+.xpbar{height:6px; border-radius:3px; background:#101827; border:1px solid var(--line); overflow:hidden}
+.xpbar i{display:block; height:100%; background:linear-gradient(90deg,var(--blue),var(--violet)); transition:width .5s cubic-bezier(.2,.8,.3,1)}
+.streak{
+  display:flex; align-items:center; gap:7px; font-family:var(--ff-mono); font-weight:700; font-size:15px;
+  color:var(--muted); padding:5px 10px; border:1px solid var(--line); border-radius:3px; white-space:nowrap;
+}
+.streak.hot{color:var(--amber); border-color:rgba(255,180,84,.45); background:rgba(255,180,84,.08); text-shadow:0 0 12px rgba(255,180,84,.5)}
+.iconbtn{
+  width:36px; height:36px; display:grid; place-items:center; border-radius:3px; cursor:pointer;
+  border:1px solid var(--line); background:var(--panel-2); color:var(--ink-2); font-size:15px; line-height:1;
+}
+.iconbtn:hover{color:var(--blue); border-color:var(--blue)}
+
+/* ══ buttons ════════════════════════════════════════════════════════ */
+.btn{
+  font-family:var(--ff-disp); font-weight:600; font-size:13.5px; letter-spacing:.11em; text-transform:uppercase;
+  line-height:1; padding:14px 22px; border-radius:3px; cursor:pointer;
+  border:1px solid var(--line); background:var(--panel-2); color:var(--ink);
+  transition:border-color .15s ease, color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.btn:hover{border-color:var(--blue); color:var(--blue); box-shadow:0 0 22px -6px rgba(87,199,255,.55)}
+.btn.primary{
+  background:linear-gradient(145deg,var(--blue),var(--violet)); border-color:transparent; color:#04121B;
+  box-shadow:0 0 26px -8px rgba(87,199,255,.8);
+}
+.btn.primary:hover{color:#04121B; filter:brightness(1.1); box-shadow:0 0 34px -6px rgba(87,199,255,.9)}
+.btn.sm{font-size:11.5px; padding:9px 13px}
+.btn.ghost{background:transparent; border-color:transparent; color:var(--muted)}
+.btn.ghost:hover{color:var(--blue); box-shadow:none}
+
+/* ══ panels ═════════════════════════════════════════════════════════ */
+.panel{border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:22px}
+.stack{display:flex; flex-direction:column; gap:14px}
+.stack-lg{display:flex; flex-direction:column; gap:34px}
+.row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+
+/* ══ tier track ═════════════════════════════════════════════════════ */
+.track{display:flex; gap:5px; align-items:flex-end}
+.pip{flex:1; height:22px; border:1px solid var(--line); border-radius:2px; background:#0A0F19; position:relative; overflow:hidden}
+.pip span{position:absolute; inset:0; display:grid; place-items:center; font-family:var(--ff-mono); font-size:9.5px; color:var(--muted)}
+.pip.reached{background:linear-gradient(180deg,rgba(87,199,255,.28),rgba(155,140,255,.14)); border-color:rgba(87,199,255,.5)}
+.pip.reached span{color:var(--ink)}
+.pip.here{border-color:var(--amber); box-shadow:0 0 14px -2px rgba(255,180,84,.6)}
+.pip.here span{color:var(--amber)}
+
+/* ══ glyph chips ════════════════════════════════════════════════════ */
+.glyph{width:100%; height:100%; display:block; color:var(--field-ink)}
+.gchip{display:flex; align-items:center; gap:9px; padding:8px 12px 8px 8px; border:1px solid var(--line); border-radius:3px; background:var(--field)}
+.gchip .gb{width:24px; height:24px; flex:none}
+.gchip .k{font-family:var(--ff-mono); font-size:11px; font-weight:500; color:var(--field-ink); opacity:.8}
+.glyph-row{display:flex; gap:9px; flex-wrap:wrap}
+
+/* ══ the chamber ════════════════════════════════════════════════════ */
+.runwrap{max-width:560px; margin-inline:auto}
+.chamber{
+  position:relative; width:100%; height:clamp(300px,46vh,420px);
+  background:var(--field); border:1px solid var(--field-line); border-radius:4px;
+  display:grid; place-items:center; overflow:hidden; user-select:none; -webkit-user-select:none;
+}
+.chamber::after{                       /* corner brackets */
+  content:""; position:absolute; inset:9px; pointer-events:none; border-radius:2px;
+  background:
+    linear-gradient(var(--blue),var(--blue)) 0 0/14px 1px no-repeat,
+    linear-gradient(var(--blue),var(--blue)) 0 0/1px 14px no-repeat,
+    linear-gradient(var(--blue),var(--blue)) 100% 0/14px 1px no-repeat,
+    linear-gradient(var(--blue),var(--blue)) 100% 0/1px 14px no-repeat,
+    linear-gradient(var(--blue),var(--blue)) 0 100%/14px 1px no-repeat,
+    linear-gradient(var(--blue),var(--blue)) 0 100%/1px 14px no-repeat,
+    linear-gradient(var(--blue),var(--blue)) 100% 100%/14px 1px no-repeat,
+    linear-gradient(var(--blue),var(--blue)) 100% 100%/1px 14px no-repeat;
+  opacity:.55;
+}
+.stim{width:min(33%,148px); aspect-ratio:1; filter:drop-shadow(0 0 16px rgba(87,199,255,.4))}
+:root[data-chamber="lab"] .stim{filter:none}
+.fix{width:14px; height:14px; position:relative; opacity:.6}
+.fix::before,.fix::after{content:""; position:absolute; background:var(--field-ink)}
+.fix::before{left:50%; top:0; width:1px; height:100%; transform:translateX(-50%)}
+.fix::after{top:50%; left:0; height:1px; width:100%; transform:translateY(-50%)}
+.cuewrap{display:grid; place-items:center}
+.cuewrap .core{width:22px; height:22px; border-radius:50%; background:#FF4257; box-shadow:0 0 26px rgba(255,66,87,.85); grid-area:1/1}
+.cuewrap .ring{width:22px; height:22px; border-radius:50%; border:2px solid #FF4257; grid-area:1/1; animation:ping .52s ease-out 1 forwards}
+@keyframes ping{from{transform:scale(1); opacity:.9} to{transform:scale(3.4); opacity:0}}
+
+.grid4{display:grid; grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(2,1fr); gap:11px; width:min(78%,312px); height:min(78%,312px)}
+.cell{
+  position:relative; border:1px solid var(--field-line); border-radius:3px; background:rgba(87,199,255,.03);
+  cursor:pointer; padding:14%; transition:border-color .12s, background .12s, box-shadow .12s, transform .12s;
+}
+.cell:hover{border-color:var(--blue); background:rgba(87,199,255,.09); box-shadow:inset 0 0 26px -10px var(--blue)}
+.cell .kbd{position:absolute; top:5px; left:8px; font-family:var(--ff-mono); font-size:10px; color:var(--field-ink); opacity:.4}
+.cell.good{border-color:var(--good); background:rgba(79,224,168,.14); box-shadow:0 0 30px -8px var(--good)}
+.cell.bad{border-color:var(--bad); background:rgba(255,107,122,.13); box-shadow:0 0 30px -8px var(--bad); animation:nudge .26s ease}
+.cell.truth{border-color:var(--good); border-style:dashed}
+.cell.dim{opacity:.26}
+.cell[disabled]{cursor:default}
+@keyframes nudge{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+
+.float{
+  position:absolute; left:50%; bottom:22%; transform:translateX(-50%);
+  font-family:var(--ff-mono); font-weight:700; font-size:19px; color:var(--amber);
+  text-shadow:0 0 16px rgba(255,180,84,.7); pointer-events:none; animation:rise 900ms ease-out forwards;
+}
+@keyframes rise{0%{opacity:0; transform:translate(-50%,10px)}20%{opacity:1}100%{opacity:0; transform:translate(-50%,-46px)}}
+
+.cardlay{position:absolute; inset:0; display:grid; place-items:center; padding:26px; background:var(--field); text-align:center}
+.cardlay .in{display:flex; flex-direction:column; align-items:center; gap:15px; max-width:42ch; color:var(--field-ink)}
+.cardlay .big{font-family:var(--ff-mono); font-weight:700; font-size:44px; line-height:1; font-variant-numeric:tabular-nums; color:var(--blue); text-shadow:0 0 24px rgba(87,199,255,.5)}
+.cardlay p{font-size:13.5px; line-height:1.5; color:var(--ink-2)}
+:root[data-chamber="lab"] .cardlay p{color:#2A2E30}
+:root[data-chamber="lab"] .cardlay .big{color:#10403C; text-shadow:none}
+
+/* ══ run rail ═══════════════════════════════════════════════════════ */
+.rail{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap}
+.chip{font-family:var(--ff-mono); font-size:11px; letter-spacing:.05em; padding:5px 9px; border:1px solid var(--line); border-radius:2px; color:var(--ink-2); background:var(--panel)}
+.chip.on{border-color:var(--blue); color:var(--blue); background:rgba(87,199,255,.08)}
+.ticks{display:flex; gap:3px; align-items:flex-end; height:12px; margin:11px 0 12px; overflow:hidden}
+.tick{flex:1; max-width:9px; height:4px; background:var(--line); border-radius:1px; transition:height .15s, background .15s}
+.tick.done{background:var(--blue); height:10px}
+.tick.hit{background:var(--good); height:10px}
+.tick.now{background:var(--amber); height:12px; box-shadow:0 0 10px rgba(255,180,84,.7)}
+
+/* ══ tier-up overlay ════════════════════════════════════════════════ */
+.tierup{
+  position:fixed; inset:0; z-index:60; display:grid; place-items:center; text-align:center;
+  background:radial-gradient(600px 400px at 50% 50%, rgba(87,199,255,.16), rgba(6,8,13,.94) 70%);
+  animation:fadein .25s ease;
+}
+.tierup .tu{display:flex; flex-direction:column; align-items:center; gap:12px}
+.tierup .nm{font-family:var(--ff-disp); font-weight:700; font-size:clamp(38px,9vw,74px); letter-spacing:.06em; text-transform:uppercase;
+  background:linear-gradient(120deg,var(--blue),var(--violet),var(--amber)); -webkit-background-clip:text; background-clip:text; color:transparent;
+  animation:pop .5s cubic-bezier(.2,1.5,.4,1)}
+@keyframes pop{from{transform:scale(.86); opacity:0}to{transform:scale(1); opacity:1}}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.sweep{width:min(72vw,420px); height:1px; background:linear-gradient(90deg,transparent,var(--blue),transparent); animation:widen .6s ease-out}
+@keyframes widen{from{width:0}to{width:min(72vw,420px)}}
+
+/* ══ tiles / meters ═════════════════════════════════════════════════ */
+.tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(138px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:4px; overflow:hidden}
+.tile{background:var(--panel); padding:17px 15px; display:flex; flex-direction:column; gap:6px}
+.tile .v{font-family:var(--ff-mono); font-weight:700; font-size:29px; line-height:1; font-variant-numeric:tabular-nums; letter-spacing:-.02em; color:var(--blue)}
+.tile .k{font-family:var(--ff-disp); font-weight:600; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted)}
+.tile .n{font-size:12px; color:var(--muted); line-height:1.45}
+.gradebox{display:flex; align-items:center; gap:18px; flex-wrap:wrap}
+.grade{
+  width:96px; height:96px; flex:none; display:grid; place-items:center; border-radius:6px;
+  font-family:var(--ff-disp); font-weight:700; font-size:52px; color:#04121B;
+  background:linear-gradient(145deg,var(--blue),var(--violet)); box-shadow:0 0 44px -10px rgba(87,199,255,.8);
+}
+
+/* ══ decoder ════════════════════════════════════════════════════════ */
+.decoder{border:1px solid var(--line); border-radius:4px; background:var(--bg-2); padding:14px}
+.decoder canvas{display:block; width:100%; height:300px}
+.legend{display:flex; gap:16px; flex-wrap:wrap; margin-top:10px}
+.legend i{display:inline-block; width:22px; height:0; border-top:3px solid; vertical-align:middle; margin-right:7px}
+
+/* ══ tables ═════════════════════════════════════════════════════════ */
+.scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table{border-collapse:collapse; width:100%; font-size:13px}
+th,td{text-align:left; padding:9px 14px 9px 0; border-bottom:1px solid var(--line); white-space:nowrap}
+th{font-family:var(--ff-disp); font-weight:600; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
+td.n{font-family:var(--ff-mono); font-variant-numeric:tabular-nums}
+.tag{font-family:var(--ff-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); border:1px solid var(--line); border-radius:2px; padding:2px 6px}
+
+/* ══ controls ═══════════════════════════════════════════════════════ */
+.controls{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px 18px}
+.ctrl{display:flex; flex-direction:column; gap:7px}
+.ctrl label{font-family:var(--ff-disp); font-weight:600; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted)}
+select{
+  font-family:var(--ff-body); font-size:14px; color:var(--ink); background:var(--panel-2);
+  border:1px solid var(--line); border-radius:3px; padding:10px; width:100%; cursor:pointer;
+}
+select:hover{border-color:var(--blue)}
+
+/* ══ intro ══════════════════════════════════════════════════════════ */
+.scrim{position:fixed; inset:0; z-index:70; display:grid; place-items:center; padding:20px; background:rgba(4,6,11,.82); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px)}
+.modal{
+  position:relative; width:100%; max-width:452px; padding:30px 28px; border-radius:5px;
+  border:1px solid rgba(87,199,255,.32); background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  box-shadow:0 0 70px -18px rgba(87,199,255,.55); display:flex; flex-direction:column; gap:15px;
+}
+.modal h2{font-size:25px; letter-spacing:.02em; background:linear-gradient(110deg,var(--blue),var(--violet)); -webkit-background-clip:text; background-clip:text; color:transparent}
+.modal p{font-size:14px; color:var(--ink-2)}
+.sig{display:flex; gap:7px}
+.sig span{width:22px; height:22px; padding:2px; border:1px solid var(--line); border-radius:3px; background:var(--field)}
+.linkout{
+  font-family:var(--ff-mono); font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:8px;
+  align-self:flex-start; padding:10px 14px; border-radius:3px; text-decoration:none;
+  border:1px solid rgba(87,199,255,.45); color:var(--blue); background:rgba(87,199,255,.09);
+}
+.linkout:hover{background:var(--blue); color:#04121B}
+
+footer{margin-top:54px; padding-top:20px; border-top:1px solid var(--line); display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; font-family:var(--ff-mono); font-size:11px; color:var(--muted)}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important; transition-duration:.01ms !important}
+}
+@media (max-width:620px){
+  .wrap{padding-inline:16px}
+  .hud{grid-template-columns:auto 1fr auto; gap:11px; padding:10px}
+  .hud .streak{display:none}
+  .tile .v{font-size:24px}
+  .grade{width:76px; height:76px; font-size:40px}
+}
+</style>
+
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="mark"><span class="dot"></span><b>Structure&nbsp;Learning</b></div>
+    <nav class="topnav">
+      <a href="#briefing">Briefing</a>
+      <a href="https://discord.gg/chmr" target="_blank" rel="noopener noreferrer">Chimera&nbsp;↗</a>
+    </nav>
+  </div>
+
+  <div class="hud">
+    <div class="rankbox">
+      <div class="badge" id="hud-badge">01</div>
+      <div style="min-width:0">
+        <div class="nm" id="hud-tier">Static</div>
+        <div class="sb" id="hud-sub">Frequency</div>
+      </div>
+    </div>
+    <div class="xpwrap">
+      <div class="xprow"><span id="hud-lvl">LEVEL 1</span><span id="hud-xp">0 XP</span></div>
+      <div class="xpbar"><i id="hud-xpfill" style="width:0%"></i></div>
+    </div>
+    <div class="streak" id="hud-streak"><span>×1</span></div>
+    <button class="iconbtn" id="btn-sound" aria-label="Toggle sound" title="Sound">♪</button>
+  </div>
+
+  <!-- ══════════════════════════ HOME ══════════════════════════ -->
+  <section id="home" class="stack-lg">
+
+    <div class="stack">
+      <p class="lbl">Cambridge structure-learning task · rebuilt</p>
+      <h1>Decode the<br><span class="hl">hidden grammar</span></h1>
+      <p class="lede">
+        Four alien glyphs stream past, one every half second. The order is not random —
+        each symbol constrains what can follow it, with loaded odds. Nobody tells you the rule.
+        You call the next symbol, over and over, until your guesses start carrying statistics
+        you were never shown.
+      </p>
+      <div class="row" style="margin-top:6px">
+        <button class="btn primary" id="btn-start">Begin run</button>
+        <span class="small num" id="est"></span>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="row" style="justify-content:space-between">
+        <h2>Tier ladder</h2>
+        <span class="small num" id="best-note"></span>
+      </div>
+      <div class="track" id="track"></div>
+      <p class="small" id="track-note"></p>
+    </div>
+
+    <div class="stack">
+      <p class="lbl">The alphabet</p>
+      <div class="glyph-row" id="alphabet"></div>
+      <p class="small">Fixed grid positions, so keys 1&ndash;4 always mean the same glyph inside a run.</p>
+    </div>
+
+    <div class="panel stack">
+      <h2>Run setup</h2>
+      <div class="controls">
+        <div class="ctrl"><label for="set-stage">Tier</label><select id="set-stage"></select></div>
+        <div class="ctrl"><label for="set-blocks">Blocks</label>
+          <select id="set-blocks"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="6">6</option></select>
+        </div>
+        <div class="ctrl"><label for="set-trials">Trials / block</label>
+          <select id="set-trials"><option value="20">20</option><option value="30" selected>30</option><option value="40">40</option></select>
+        </div>
+        <div class="ctrl"><label for="set-fb">Feedback</label>
+          <select id="set-fb">
+            <option value="auto" selected>Follow the tier</option>
+            <option value="trial">Every trial</option>
+            <option value="block">Block only</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div class="ctrl"><label for="set-dur">Glyph duration</label>
+          <select id="set-dur"><option value="100">100 ms (lab)</option><option value="150" selected>150 ms</option><option value="250">250 ms</option></select>
+        </div>
+        <div class="ctrl"><label for="set-chamber">Chamber</label>
+          <select id="set-chamber"><option value="dark" selected>Dark</option><option value="lab">Lab grey</option></select>
+        </div>
+      </div>
+      <p class="small" id="setup-note"></p>
+    </div>
+
+    <div class="stack">
+      <div class="row" style="justify-content:space-between">
+        <h2>Run log</h2>
+        <button class="btn ghost sm" id="btn-clear" hidden>Wipe log</button>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Date</th><th>Tier</th><th>Trials</th><th>Perf. index</th><th>Structure</th><th>Strategy</th><th>XP</th></tr></thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+      <p class="small">Stored in this browser only. Nothing is uploaded anywhere.</p>
+    </div>
+
+    <div class="stack" id="briefing">
+      <p class="lbl">Briefing</p>
+      <h2>What is actually going on</h2>
+      <div class="prose stack">
+        <p>
+          Every trial plays 9&ndash;13 glyphs at a fixed 500&nbsp;ms onset-to-onset rhythm, then a red dot
+          tells you to predict. The stream comes from a Markov chain: each context allows exactly two
+          successors with uneven odds, from 85/15 at the bottom of the ladder down to 65/35 near the top,
+          and at the highest tiers the context becomes the <i>last two</i> glyphs rather than one.
+          The chain is rebuilt for every run, so what improves is your ability to extract structure,
+          not your memory of one particular chain.
+        </p>
+        <p>
+          <b>Structure score</b> is the honest measure: how much of the available predictive value your
+          choices actually captured, where 0 is chance and 100 is the ceiling. <b>Performance index</b> is
+          the overlap between your response distribution and the true one, reported the way the source
+          papers report it. <b>Strategy</b> separates the two ways of being right — probability matching
+          (answering 80/20 when the world is 80/20) versus maximising (always taking the likely one).
+          <b>XP and streaks are entertainment.</b> They make a long run bearable; they are not a measure
+          of anything, and a hot streak on a 20% branch is luck.
+        </p>
+        <p>
+          The evidence: Wang, Gates, Shen, Tino &amp; Kourtzi (2023, <i>Frontiers in Neuroscience</i>,
+          N&nbsp;=&nbsp;105) found trial-by-trial feedback produced a 33.2&nbsp;&plusmn;&nbsp;3.6% improvement,
+          block-level feedback 23.5&nbsp;&plusmn;&nbsp;3.9%, and no feedback at all still 19.0&nbsp;&plusmn;&nbsp;3.9%,
+          with gains largely held four weeks on. Pushing the odds to 60/40 collapsed learning to
+          4.6&nbsp;&plusmn;&nbsp;2.2%.
+        </p>
+        <p>
+          What is <b>not</b> established is that any of this transfers to anything else. The Cambridge
+          transfer trial (NCT05611788) is finished but unpublished as of September 2026, and the
+          brain-training meta-analyses are blunt that far transfer sits near zero (Gobet &amp; Sala 2023;
+          Au et&nbsp;al. 2015, g&nbsp;=&nbsp;0.13 and non-significant once active controls are required).
+          This is a well-instrumented rebuild of a research task. It is not a device for raising your IQ,
+          and nobody should sell it to you as one.
+        </p>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Source</th><th>What it gives</th></tr></thead>
+          <tbody>
+            <tr><td>Wang et&nbsp;al. 2023, <i>Front. Neurosci.</i> 17:1195388</td><td>Task, feedback arms, performance &amp; strategy indices</td></tr>
+            <tr><td>Wang et&nbsp;al. 2017, <i>J. Neurosci.</i> 37:8412</td><td>The original paradigm</td></tr>
+            <tr><td>Karlaftis et&nbsp;al. 2019, <i>Nat. Hum. Behav.</i> 3:297</td><td>Mechanistic / imaging basis</td></tr>
+            <tr><td>Liu et&nbsp;al. 2023, <i>Trials</i> 24:517</td><td>Staged adaptive protocol</td></tr>
+            <tr><td>Gobet &amp; Sala 2023, <i>Perspect. Psychol. Sci.</i> 18:125</td><td>The far-transfer null</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ RUN ══════════════════════════ -->
+  <section id="run" hidden>
+    <div class="runwrap">
+      <div class="rail">
+        <div class="row" style="gap:7px">
+          <span class="chip on" id="rail-tier">Tier 1</span>
+          <span class="chip" id="rail-block">Block 1 / 3</span>
+        </div>
+        <button class="btn ghost sm" id="btn-abort">Abort run</button>
+      </div>
+      <div class="ticks" id="ticks"></div>
+      <div class="chamber" id="chamber"></div>
+      <div class="row" style="justify-content:space-between; margin-top:12px">
+        <p class="small" id="run-hint">Watch the stream, then call the next glyph.</p>
+        <p class="small">1&ndash;4 &middot; Esc aborts</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════ DEBRIEF ════════════════════════ -->
+  <section id="debrief" hidden class="stack-lg">
+    <div class="stack">
+      <p class="lbl" id="db-eyebrow">Run complete</p>
+      <div class="gradebox">
+        <div class="grade" id="db-grade">A</div>
+        <div class="stack" style="gap:8px; flex:1; min-width:240px">
+          <h1 style="font-size:clamp(24px,4.4vw,34px)" id="db-title">Signal decoded</h1>
+          <p class="lede" id="db-lede" style="font-size:15px"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tiles" id="db-tiles"></div>
+
+    <div class="stack">
+      <h2>Decoder</h2>
+      <p class="small" id="db-dec-note"></p>
+      <div class="decoder"><canvas id="db-canvas"></canvas>
+        <div class="legend small">
+          <span><i style="border-color:#57C7FF"></i>The real chain</span>
+          <span><i style="border-color:#FFB454"></i>What you predicted</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <h2>Blocks</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Block</th><th>Tier</th><th>Trials</th><th>Perf. index</th><th>Structure</th><th>Accuracy</th><th>Median RT</th></tr></thead>
+          <tbody id="db-blocks"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="btn primary" id="btn-again">Run again</button>
+      <button class="btn" id="btn-csv">Copy trial data</button>
+      <button class="btn ghost sm" id="btn-home">Home</button>
+      <span class="small" id="csv-note"></span>
+    </div>
+    <textarea id="csv-box" hidden rows="6" aria-label="Trial data as CSV"
+      style="width:100%;font-family:var(--ff-mono);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:10px;background:var(--panel);color:var(--ink)"></textarea>
+  </section>
+
+  <footer>
+    <span>Built by the Chimera community · <a href="https://discord.gg/chmr" target="_blank" rel="noopener noreferrer">discord.gg/chmr</a></span>
+    <span>after Wang et al. 2023</span>
+  </footer>
+</div>
+
+<div class="scrim" id="intro" role="dialog" aria-modal="true" aria-labelledby="intro-title">
+  <div class="modal">
+    <div class="sig" id="intro-sig"></div>
+    <p class="lbl">Incoming transmission</p>
+    <h2 id="intro-title">Built by the Chimera community</h2>
+    <p>
+      An open rebuild of Cambridge's structure-learning task — real published work behind it,
+      and until now no version you could just open in a browser. Made by the Chimera community
+      on Discord. Come break it and tell us what to build next.
+    </p>
+    <a class="linkout" href="https://discord.gg/chmr" target="_blank" rel="noopener noreferrer">discord.gg/chmr ↗</a>
+    <button class="btn primary" id="intro-enter" style="align-self:flex-start">Enter</button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ══ glyphs (path data shared by SVG and canvas) ══════════════════════ */
+const GLYPHS = [
+  ["M50 86V40","M26 40a24 24 0 0 1 48 0"],
+  ["M30 40a20 20 0 1 1 40 0a20 20 0 1 1 -40 0","M24 78h52"],
+  ["M34 22 62 42 34 60 62 80"],
+  ["M50 18v36","M50 54 24 82","M50 54l26 28"]
+];
+const GNAMES = ["Arch","Ring","Zigzag","Fork"];
+function glyph(i){
+  return '<svg class="glyph" viewBox="0 0 100 100" aria-hidden="true" fill="none" stroke="currentColor" '+
+    'stroke-width="7" stroke-linecap="round" stroke-linejoin="round">'+
+    GLYPHS[i].map(d=>'<path d="'+d+'"/>').join("")+'</svg>';
+}
+const GPATH2D = GLYPHS.map(set=>set.map(d=>new Path2D(d)));
+
+/* ══ tier ladder ══════════════════════════════════════════════════════ */
+const TIERS = [
+  {id:1,  code:"STATIC",  name:"Frequency",       order:0, p:[0.45,0.30,0.17,0.08], fb:"trial", jitter:false, desc:"Glyphs appear at uneven rates. No context yet."},
+  {id:2,  code:"DRIFT",   name:"Frequency · flat",order:0, p:[0.36,0.29,0.21,0.14], fb:"trial", jitter:false, desc:"Same idea, rates pulled closer together."},
+  {id:3,  code:"TRACE",   name:"Order 1 · 85/15", order:1, pHigh:0.85, fb:"trial", jitter:false, desc:"Each glyph permits two successors, 85/15."},
+  {id:4,  code:"SIGNAL",  name:"Order 1 · 80/20", order:1, pHigh:0.80, fb:"trial", jitter:false, desc:"The canonical Wang et al. condition."},
+  {id:5,  code:"CIPHER",  name:"Order 1 · 75/25", order:1, pHigh:0.75, fb:"block", jitter:false, desc:"Feedback thins to one number per block."},
+  {id:6,  code:"PHANTOM", name:"Order 1 · 70/30", order:1, pHigh:0.70, fb:"block", jitter:false, desc:"Odds get harder to tell apart."},
+  {id:7,  code:"MIRAGE",  name:"Order 1 · 65/35", order:1, pHigh:0.65, fb:"block", jitter:true,  desc:"Near the edge of learnability, with timing jitter."},
+  {id:8,  code:"LATTICE", name:"Order 2 · 85/15", order:2, pHigh:0.85, fb:"trial", jitter:false, desc:"Context becomes the last two glyphs."},
+  {id:9,  code:"HELIX",   name:"Order 2 · 80/20", order:2, pHigh:0.80, fb:"block", jitter:false, desc:"Second-order structure, block feedback only."},
+  {id:10, code:"ORACLE",  name:"Order 2 · 70/30", order:2, pHigh:0.70, fb:"none",  jitter:true,  desc:"No feedback at all. You are on your own."}
+];
+const SOA=500, CUE_MS=520, FIX_MS=600, FB_MS=640, XP_PER_LEVEL=750;
+
+/* ══ utils ════════════════════════════════════════════════════════════ */
+const $=id=>document.getElementById(id);
+const irand=n=>Math.floor(Math.random()*n);
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=irand(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;}
+function sample(d){let r=Math.random(),c=0;for(let i=0;i<d.length;i++){c+=d[i];if(r<c)return i;}return d.length-1;}
+function argmax(a){let b=0;for(let i=1;i<a.length;i++)if(a[i]>a[b])b=i;return b;}
+function median(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+const pct=x=>Math.round(x*100);
+const fx=(x,n)=>(Math.round(x*Math.pow(10,n))/Math.pow(10,n)).toFixed(n);
+const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const store={
+  get(k,d){try{const v=localStorage.getItem("slt:"+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem("slt:"+k,JSON.stringify(v));}catch(e){}},
+  del(k){try{localStorage.removeItem("slt:"+k);}catch(e){}}
+};
+
+/* ══ sound ════════════════════════════════════════════════════════════ */
+const Sound={
+  on:true, ac:null,
+  boot(){ if(this.ac) return; try{ this.ac=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} },
+  tone(f,dur,type,vol,slideTo){
+    if(!this.on||!this.ac) return;
+    try{
+      const t=this.ac.currentTime, o=this.ac.createOscillator(), g=this.ac.createGain();
+      o.type=type||"sine"; o.frequency.setValueAtTime(f,t);
+      if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,t+dur);
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(vol||0.07,t+0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.connect(g); g.connect(this.ac.destination); o.start(t); o.stop(t+dur+0.02);
+    }catch(e){}
+  },
+  cue(){ this.tone(660,0.12,"triangle",0.05); },
+  pick(){ this.tone(420,0.06,"square",0.03); },
+  ok(){ this.tone(620,0.1,"sine",0.06,940); setTimeout(()=>this.tone(940,0.12,"sine",0.05),70); },
+  no(){ this.tone(170,0.2,"sawtooth",0.045,110); },
+  block(){ [520,700,880].forEach((f,i)=>setTimeout(()=>this.tone(f,0.16,"sine",0.05),i*90)); },
+  tier(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>this.tone(f,0.3,"triangle",0.06),i*95)); }
+};
+
+/* ══ chain construction ═══════════════════════════════════════════════ */
+function reachesAll(map){
+  for(let s=0;s<4;s++){
+    const seen=new Set([String(s)]), q=[String(s)];
+    while(q.length){ const d=map.get(q.shift());
+      for(let j=0;j<4;j++) if(d[j]>0 && !seen.has(String(j))){ seen.add(String(j)); q.push(String(j)); } }
+    if(seen.size<4) return false;
+  }
+  return true;
+}
+function buildOrder1(pHigh){
+  for(let a=0;a<400;a++){
+    const map=new Map();
+    for(let s=0;s<4;s++){
+      const c=shuffle([0,1,2,3].filter(x=>x!==s));
+      const d=[0,0,0,0]; d[c[0]]=pHigh; d[c[1]]=1-pHigh; map.set(String(s),d);
+    }
+    if(reachesAll(map)) return map;
+  }
+  const map=new Map();
+  for(let s=0;s<4;s++){const d=[0,0,0,0];d[(s+1)%4]=pHigh;d[(s+2)%4]=1-pHigh;map.set(String(s),d);}
+  return map;
+}
+function buildOrder2(pHigh){
+  const CAP=6, map=new Map(), seen=new Set();
+  const a0=irand(4); let b0=irand(4); while(b0===a0) b0=irand(4);
+  const queue=[[a0,b0]]; seen.add(a0+","+b0);
+  while(queue.length){
+    const ctx=queue.shift();
+    let cands=shuffle([0,1,2,3].filter(x=>x!==ctx[1]));
+    if(seen.size>=CAP) cands.sort((x,y)=>(seen.has(ctx[1]+","+x)?0:1)-(seen.has(ctx[1]+","+y)?0:1));
+    const d=[0,0,0,0]; d[cands[0]]=pHigh; d[cands[1]]=1-pHigh;
+    map.set(ctx.join(","),d);
+    for(const s of [cands[0],cands[1]]){
+      const nk=ctx[1]+","+s;
+      if(!seen.has(nk)){ seen.add(nk); queue.push([ctx[1],s]); }
+    }
+  }
+  return map;
+}
+function buildChain(tier){
+  if(tier.order===0){
+    const base=shuffle(tier.p.slice());
+    return {order:0, map:new Map([["-",base]]), keys:["-"], pHigh:Math.max.apply(null,base)};
+  }
+  const map = tier.order===1 ? buildOrder1(tier.pHigh) : buildOrder2(tier.pHigh);
+  return {order:tier.order, map, keys:[...map.keys()], pHigh:tier.pHigh};
+}
+function genTrial(ch){
+  const L=9+irand(5);
+  if(ch.order===0){
+    const d=ch.map.get("-"), seq=[];
+    for(let i=0;i<L;i++) seq.push(sample(d));
+    return {seq, ctx:"-", dist:d, actual:sample(d)};
+  }
+  const seq=ch.keys[irand(ch.keys.length)].split(",").map(Number);
+  while(seq.length<L) seq.push(sample(ch.map.get(seq.slice(-ch.order).join(","))));
+  const ctx=seq.slice(-ch.order).join(","), dist=ch.map.get(ctx);
+  return {seq, ctx, dist, actual:sample(dist)};
+}
+
+/* ══ metrics ══════════════════════════════════════════════════════════ */
+function klDiv(q,p){
+  const e=0.02,z=1+4*e; let s=0;
+  for(let j=0;j<4;j++){ const qn=(q[j]+e)/z, pn=(p[j]+e)/z; s+=qn*Math.log(qn/pn); }
+  return s;
+}
+function responseDist(trials){
+  const by=new Map();
+  for(const t of trials){
+    if(!by.has(t.ctx)) by.set(t.ctx,{n:0,counts:[0,0,0,0],dist:t.dist});
+    const e=by.get(t.ctx); e.n++; e.counts[t.resp]++;
+  }
+  return by;
+}
+function metrics(trials){
+  const N=trials.length;
+  if(!N) return {n:0,pi:0,structure:0,strategy:0,klStrategy:.5,acc:0,rt:0};
+  const by=responseDist(trials);
+  let sumP=0,sumMax=0,hits=0,maxHits=0; const rts=[];
+  for(const t of trials){
+    const top=Math.max.apply(null,t.dist);
+    sumP+=t.dist[t.resp]; sumMax+=top;
+    if(t.resp===t.actual) hits++;
+    if(t.dist[t.resp]===top) maxHits++;
+    rts.push(t.rt);
+  }
+  let pi=0,klM=0,klX=0;
+  for(const e of by.values()){
+    const w=e.n/N, q=e.counts.map(c=>c/e.n);
+    for(let j=0;j<4;j++) pi+=w*Math.min(e.dist[j],q[j]);
+    const oh=[0,0,0,0]; oh[argmax(e.dist)]=1;
+    klM+=w*klDiv(q,e.dist); klX+=w*klDiv(q,oh);
+  }
+  const meanP=sumP/N, meanMax=sumMax/N;
+  return {
+    n:N, pi,
+    structure: clamp((meanP-0.25)/Math.max(1e-6,meanMax-0.25),-1,1),
+    strategy:  clamp((maxHits/N-meanMax)/Math.max(1e-6,1-meanMax),-1,1),
+    klStrategy:(klM+klX)>0?klM/(klM+klX):0.5,
+    acc: hits/N, rt: median(rts)
+  };
+}
+
+/* ══ state ════════════════════════════════════════════════════════════ */
+const DEFAULTS={stage:"auto",blocks:3,trials:30,fb:"auto",dur:150,chamber:"dark",sound:true};
+let settings=Object.assign({},DEFAULTS,store.get("settings",{}));
+let profile =Object.assign({xp:0,bestTier:1,runs:0,trials:0},store.get("profile",{}));
+let history =store.get("history",[]);
+let S=null, runToken=0, pendingCancel=null;
+const ABORT={aborted:true};
+
+function wait(ms,tok){ return new Promise((res,rej)=>setTimeout(()=>{ tok===runToken?res():rej(ABORT); },ms)); }
+function abortAll(){ runToken++; const c=pendingCancel; pendingCancel=null; if(c) c(); }
+function show(n){ ["home","run","debrief"].forEach(k=>{$(k).hidden=(k!==n);}); window.scrollTo({top:0}); }
+
+/* ══ HUD ══════════════════════════════════════════════════════════════ */
+function level(){ return Math.floor(profile.xp/XP_PER_LEVEL)+1; }
+function paintHud(){
+  const t = S ? TIERS[S.tierId-1] : TIERS[(settings.stage==="auto"?profile.bestTier:Number(settings.stage))-1];
+  $("hud-badge").textContent = String(t.id).padStart(2,"0");
+  $("hud-tier").textContent = t.code;
+  $("hud-sub").textContent = t.name;
+  $("hud-lvl").textContent = "LEVEL "+level();
+  $("hud-xp").textContent = profile.xp.toLocaleString()+" XP";
+  $("hud-xpfill").style.width = ((profile.xp%XP_PER_LEVEL)/XP_PER_LEVEL*100)+"%";
+  const st=$("hud-streak"), k=S?S.streak:0, m=S?mult():1;
+  st.innerHTML="<span>×"+m+"</span>"+(k>1?'<span class="small" style="color:inherit">'+k+"</span>":"");
+  st.classList.toggle("hot", m>1);
+}
+function mult(){ return S ? clamp(1+Math.floor(S.streak/3),1,5) : 1; }
+
+/* ══ home ═════════════════════════════════════════════════════════════ */
+function renderAlphabet(){
+  $("alphabet").innerHTML=GLYPHS.map((_,i)=>
+    '<div class="gchip"><div class="gb">'+glyph(i)+'</div><span class="k">'+(i+1)+" · "+GNAMES[i]+"</span></div>").join("");
+  $("intro-sig").innerHTML=GLYPHS.map((_,i)=>"<span>"+glyph(i)+"</span>").join("");
+}
+function renderTrack(){
+  const cur = settings.stage==="auto" ? profile.bestTier : Number(settings.stage);
+  $("track").innerHTML=TIERS.map(t=>{
+    const cls="pip"+(t.id<=profile.bestTier?" reached":"")+(t.id===cur?" here":"");
+    return '<div class="'+cls+'" title="'+t.code+" — "+t.name+'"><span>'+t.code.slice(0,3)+"</span></div>";
+  }).join("");
+  const t=TIERS[cur-1];
+  $("track-note").textContent = t.code+" · "+t.name+" — "+t.desc;
+  $("best-note").textContent = "Best "+TIERS[profile.bestTier-1].code+" · "+profile.trials.toLocaleString()+" trials logged";
+}
+function renderStageOptions(){
+  $("set-stage").innerHTML='<option value="auto">Adaptive ladder</option>'+
+    TIERS.map(t=>'<option value="'+t.id+'">'+String(t.id).padStart(2,"0")+" · "+t.code+"</option>").join("");
+}
+function syncSetup(){
+  $("set-stage").value=String(settings.stage);
+  $("set-blocks").value=String(settings.blocks);
+  $("set-trials").value=String(settings.trials);
+  $("set-fb").value=settings.fb;
+  $("set-dur").value=String(settings.dur);
+  $("set-chamber").value=settings.chamber;
+  document.documentElement.setAttribute("data-chamber",settings.chamber);
+  const note = settings.stage==="auto"
+    ? "Climbs a tier whenever your structure score clears 60 in a block, drops one after two blocks under 15."
+    : "Pinned to "+TIERS[settings.stage-1].code+". "+TIERS[settings.stage-1].desc;
+  $("setup-note").textContent = note + (settings.fb==="auto"?"":" Feedback is overridden on every tier.");
+  const secs=settings.blocks*settings.trials*(FIX_MS+11*SOA+CUE_MS+1400)/1000;
+  $("est").textContent="≈ "+Math.round(secs/60)+" MIN";
+  store.set("settings",settings);
+  renderTrack(); paintHud();
+}
+function renderHistory(){
+  const b=$("history-body");
+  if(!history.length){
+    b.innerHTML='<tr><td><span class="tag">example</span></td><td>04 · SIGNAL</td><td class="n">90</td>'+
+      '<td class="n">0.71</td><td class="n">58</td><td class="n">+0.22</td><td class="n">1,140</td></tr>';
+    $("btn-clear").hidden=true; return;
+  }
+  b.innerHTML=history.map(h=>
+    "<tr><td>"+h.date+"</td><td>"+h.tier+'</td><td class="n">'+h.n+'</td><td class="n">'+fx(h.pi,2)+
+    '</td><td class="n">'+pct(h.structure)+'</td><td class="n">'+(h.strategy>=0?"+":"")+fx(h.strategy,2)+
+    '</td><td class="n">'+(h.xp||0).toLocaleString()+"</td></tr>").join("");
+  $("btn-clear").hidden=false;
+}
+
+/* ══ run ══════════════════════════════════════════════════════════════ */
+function newRun(){
+  const tierId = settings.stage==="auto" ? 1 : Number(settings.stage);
+  S={ id:"R"+Date.now().toString(36), startedAt:new Date(), tierId, adaptive:settings.stage==="auto",
+      chain:buildChain(TIERS[tierId-1]), chainSwaps:0, blocks:[], allTrials:[],
+      lowStreak:0, blockIndex:0, streak:0, bestStreak:0, xp:0 };
+}
+const tier=()=>TIERS[S.tierId-1];
+const fbMode=()=>settings.fb==="auto"?tier().fb:settings.fb;
+const cham=()=>$("chamber");
+
+function updateRail(idx, results){
+  $("rail-tier").textContent="Tier "+S.tierId+" · "+tier().code;
+  $("rail-block").textContent="Block "+Math.min(S.blockIndex+1,settings.blocks)+" / "+settings.blocks;
+  let h="";
+  for(let i=0;i<settings.trials;i++){
+    let cls="tick";
+    if(i<idx) cls = (fbMode()==="trial" && results[i]) ? "tick hit" : "tick done";
+    else if(i===idx) cls="tick now";
+    h+='<span class="'+cls+'"></span>';
+  }
+  $("ticks").innerHTML=h;
+}
+function paintFix(){ cham().innerHTML='<div class="fix"></div>'; }
+function paintBlank(){ cham().innerHTML=""; }
+function paintStim(i){ cham().innerHTML='<div class="stim">'+glyph(i)+"</div>"; }
+function paintCue(){ cham().innerHTML='<div class="cuewrap"><div class="core"></div><div class="ring"></div></div>'; }
+function paintGrid(){
+  let h='<div class="grid4" id="grid4">';
+  for(let i=0;i<4;i++)
+    h+='<button class="cell" data-sym="'+i+'" aria-label="Call glyph '+(i+1)+", "+GNAMES[i]+'"><span class="kbd">'+(i+1)+"</span>"+glyph(i)+"</button>";
+  cham().innerHTML=h+"</div>";
+}
+function floatXp(txt){
+  const d=document.createElement("div"); d.className="float"; d.textContent=txt;
+  cham().appendChild(d); setTimeout(()=>d.remove(),1000);
+}
+function awaitPick(tok){
+  return new Promise((res,rej)=>{
+    let done=false;
+    const cleanup=()=>{ done=true; document.removeEventListener("keydown",onKey); pendingCancel=null; };
+    const finish=s=>{ if(done)return; cleanup(); tok!==runToken?rej(ABORT):res(s); };
+    function onKey(e){ const n="1234".indexOf(e.key); if(n>=0){ e.preventDefault(); finish(n); } }
+    document.addEventListener("keydown",onKey);
+    pendingCancel=()=>{ if(!done){ cleanup(); rej(ABORT); } };
+    const g=$("grid4");
+    if(g) g.addEventListener("click",e=>{ const b=e.target.closest(".cell"); if(b) finish(Number(b.dataset.sym)); });
+  });
+}
+
+async function runTrial(tok, trials, results){
+  paintFix(); await wait(FIX_MS,tok);
+  const t=genTrial(S.chain), dur=settings.dur;
+  for(const sym of t.seq){
+    const j=tier().jitter?(irand(241)-120):0;
+    paintStim(sym); await wait(dur,tok);
+    paintBlank(); await wait(Math.max(60,SOA-dur+j),tok);
+  }
+  paintCue(); Sound.cue(); await wait(CUE_MS,tok);
+
+  paintGrid();
+  const t0=performance.now();
+  const resp=await awaitPick(tok);
+  const rt=Math.round(performance.now()-t0);
+  const ok = resp===t.actual;
+  Sound.pick();
+
+  const cells=cham().querySelectorAll(".cell");
+  cells.forEach(c=>c.setAttribute("disabled",""));
+  const mode=fbMode();
+  if(mode==="trial"){
+    cells.forEach(c=>{
+      const s=Number(c.dataset.sym);
+      if(s===resp) c.classList.add(ok?"good":"bad");
+      else if(s===t.actual) c.classList.add("truth","dim");
+      else c.classList.add("dim");
+    });
+    if(ok){
+      S.streak++; S.bestStreak=Math.max(S.bestStreak,S.streak);
+      const gain=10*mult(); S.xp+=gain; profile.xp+=gain;
+      Sound.ok(); floatXp("+"+gain+" XP");
+    }else{ S.streak=0; Sound.no(); }
+    paintHud();
+    await wait(FB_MS,tok);
+  }else{
+    cells.forEach(c=>c.classList.add(Number(c.dataset.sym)===resp?"good":"dim"));
+    if(ok){ S.streak++; S.bestStreak=Math.max(S.bestStreak,S.streak); }else S.streak=0;
+    await wait(220,tok);
+  }
+  results.push(ok);
+  trials.push({seq:t.seq,ctx:t.ctx,dist:t.dist,actual:t.actual,resp,rt,tierId:S.tierId,block:S.blockIndex+1});
+}
+
+function overlay(html){
+  const d=document.createElement("div"); d.className="cardlay";
+  d.innerHTML='<div class="in">'+html+"</div>"; cham().appendChild(d);
+}
+function tierUp(t){
+  return new Promise(res=>{
+    Sound.tier();
+    const d=document.createElement("div");
+    d.className="tierup";
+    d.innerHTML='<div class="tu"><p class="lbl">Tier unlocked</p><div class="nm">'+t.code+
+      '</div><div class="sweep"></div><p class="small">'+t.name+" — "+t.desc+"</p></div>";
+    document.body.appendChild(d);
+    setTimeout(()=>{ d.remove(); res(); }, reduced?350:1750);
+  });
+}
+
+async function runBlock(tok){
+  const trials=[], results=[];
+  for(let i=0;i<settings.trials;i++){ updateRail(i,results); await runTrial(tok,trials,results); }
+  updateRail(settings.trials,results);
+
+  const m=metrics(trials);
+  S.blocks.push({i:S.blockIndex+1,tierId:S.tierId,trials,m});
+  S.allTrials.push.apply(S.allTrials,trials);
+  const bonus=Math.max(0,Math.round(m.structure*120));
+  S.xp+=bonus; profile.xp+=bonus;
+
+  let moved=0;
+  if(S.adaptive){
+    if(m.structure>=0.60 && S.tierId<TIERS.length){ S.tierId++; moved=1; S.lowStreak=0; }
+    else if(m.structure<0.15){ S.lowStreak++; if(S.lowStreak>=2 && S.tierId>1){ S.tierId--; moved=-1; S.lowStreak=0; } }
+    else S.lowStreak=0;
+    if(moved!==0){ S.chain=buildChain(tier()); S.chainSwaps++; }
+  }
+  profile.bestTier=Math.max(profile.bestTier,S.tierId);
+  S.blockIndex++;
+  paintHud(); saveProfile(); updateRail(settings.trials,results);
+
+  if(moved>0){ await tierUp(tier()); if(tok!==runToken) throw ABORT; }
+  else Sound.block();
+
+  const last=S.blockIndex>=settings.blocks, mode=fbMode();
+  let body;
+  if(mode==="none"){
+    body='<p class="lbl">Block '+S.blockIndex+" of "+settings.blocks+' complete</p><div class="big">—</div>'+
+         "<p>This tier runs dark. Full readout at the end of the run.</p>";
+  }else if(mode==="block"){
+    body='<p class="lbl">Performance index</p><div class="big">'+fx(m.pi,2)+"</div>"+
+         "<p>Overlap between your calls and the real statistics. Chance sits near "+fx(chancePI(trials),2)+".</p>";
+  }else{
+    body='<p class="lbl">Block '+S.blockIndex+' hit rate</p><div class="big">'+pct(m.acc)+"%</div>"+
+         "<p>"+Math.round(m.acc*m.n)+" of "+m.n+" calls matched what actually came next. Best streak "+S.bestStreak+".</p>";
+  }
+  if(mode!=="none") body+='<p class="lbl" style="color:var(--amber)">+'+bonus+" XP block bonus</p>";
+  if(moved<0) body+="<p><b>Dropping to tier "+S.tierId+" · "+tier().code+".</b> New chain.</p>";
+  body+='<button class="btn primary" id="btn-next">'+(last?"Debrief":"Next block")+"</button>";
+
+  paintBlank(); overlay(body);
+  await new Promise((res,rej)=>{
+    let done=false;
+    const b=$("btn-next"); b.focus({preventScroll:true});
+    b.addEventListener("click",()=>{ if(done)return; done=true; pendingCancel=null; tok===runToken?res():rej(ABORT); });
+    pendingCancel=()=>{ if(!done){ done=true; rej(ABORT); } };
+  });
+}
+function chancePI(trials){
+  let s=0;
+  for(const t of trials) for(let j=0;j<4;j++) s+=Math.min(t.dist[j],0.25);
+  return s/Math.max(1,trials.length);
+}
+async function startRun(){
+  Sound.boot();
+  const tok=++runToken;
+  newRun(); paintHud(); show("run");
+  try{
+    while(S.blockIndex<settings.blocks) await runBlock(tok);
+    finishRun(false);
+  }catch(e){ if(e!==ABORT) throw e; }
+}
+function finishRun(early){
+  abortAll();
+  if(!S||S.allTrials.length<5){ show("home"); return; }
+  profile.runs++; profile.trials+=S.allTrials.length;
+  saveProfile(); logRun(); renderDebrief(early); show("debrief"); paintHud();
+}
+function saveProfile(){ store.set("profile",profile); }
+function logRun(){
+  const m=metrics(S.allTrials);
+  const ids=[...new Set(S.blocks.map(b=>b.tierId))];
+  history.unshift({
+    date:S.startedAt.toLocaleDateString(undefined,{month:"short",day:"numeric"}),
+    tier:ids.map(i=>String(i).padStart(2,"0")+" · "+TIERS[i-1].code).join(", "),
+    n:m.n, pi:m.pi, structure:m.structure, strategy:m.strategy, xp:S.xp
+  });
+  history=history.slice(0,20); store.set("history",history); renderHistory();
+}
+
+/* ══ decoder canvas ═══════════════════════════════════════════════════ */
+function drawDecoder(cv, chain, byCtx){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=cv.clientWidth||520, h=300;
+  cv.width=w*dpr; cv.height=h*dpr;
+  const g=cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+
+  if(chain.order===0){                      // base rates as bars
+    const d=chain.map.get("-"), q=byCtx.get("-");
+    const qq=q?q.counts.map(c=>c/q.n):[0,0,0,0];
+    const bw=Math.min(88,(w-80)/4), gap=(w-bw*4)/5;
+    for(let i=0;i<4;i++){
+      const x=gap+i*(bw+gap), base=h-52;
+      g.strokeStyle="#233047"; g.lineWidth=1; g.strokeRect(x,32,bw,base-32);
+      g.fillStyle="rgba(87,199,255,.45)"; g.fillRect(x,base-(base-32)*d[i],bw,(base-32)*d[i]);
+      g.fillStyle="rgba(255,180,84,.85)"; g.fillRect(x+bw*0.3,base-(base-32)*qq[i],bw*0.4,(base-32)*qq[i]);
+      drawGlyph(g,i,x+bw/2,h-26,22,"#8FA3C0");
+    }
+    g.fillStyle="#6B7B95"; g.font='11px "JetBrains Mono", monospace'; g.textAlign="left";
+    g.fillText("blue = true rate · amber = your calls",12,18);
+    return;
+  }
+
+  const keys=chain.keys, n=keys.length;
+  const cx=w/2, cy=h/2, R=Math.min(w,h)*0.33;
+  const pos={};
+  keys.forEach((k,i)=>{ const a=-Math.PI/2+i*2*Math.PI/n; pos[k]={x:cx+R*Math.cos(a), y:cy+R*Math.sin(a)}; });
+  const nextKey=(k,j)=> chain.order===1 ? String(j) : (k.split(",")[1]+","+j);
+
+  function edge(a,b,width,color,dash){
+    if(!pos[a]||!pos[b]) return;
+    const p=pos[a], q=pos[b];
+    const mx=(p.x+q.x)/2, my=(p.y+q.y)/2;
+    const dx=q.x-p.x, dy=q.y-p.y, len=Math.hypot(dx,dy)||1;
+    const off=Math.min(48,len*0.28);
+    const ctrl={x:mx-dy/len*off, y:my+dx/len*off};
+    g.save(); g.setLineDash(dash||[]); g.strokeStyle=color; g.lineWidth=width; g.lineCap="round";
+    g.beginPath(); g.moveTo(p.x,p.y); g.quadraticCurveTo(ctrl.x,ctrl.y,q.x,q.y); g.stroke();
+    const t=0.8, ax=(1-t)*(1-t)*p.x+2*(1-t)*t*ctrl.x+t*t*q.x, ay=(1-t)*(1-t)*p.y+2*(1-t)*t*ctrl.y+t*t*q.y;
+    const t2=0.68, bx=(1-t2)*(1-t2)*p.x+2*(1-t2)*t2*ctrl.x+t2*t2*q.x, by=(1-t2)*(1-t2)*p.y+2*(1-t2)*t2*ctrl.y+t2*t2*q.y;
+    const ang=Math.atan2(ay-by,ax-bx);
+    g.setLineDash([]); g.fillStyle=color; g.beginPath();
+    g.moveTo(ax,ay); g.lineTo(ax-9*Math.cos(ang-0.4),ay-9*Math.sin(ang-0.4));
+    g.lineTo(ax-9*Math.cos(ang+0.4),ay-9*Math.sin(ang+0.4)); g.closePath(); g.fill();
+    g.restore();
+  }
+
+  keys.forEach(k=>{                         // true chain
+    const d=chain.map.get(k);
+    for(let j=0;j<4;j++) if(d[j]>0) edge(k,nextKey(k,j),1+d[j]*5,"rgba(87,199,255,.55)");
+  });
+  keys.forEach(k=>{                         // your responses
+    const e=byCtx.get(k); if(!e) return;
+    for(let j=0;j<4;j++){
+      const q=e.counts[j]/e.n;
+      if(q>0.04) edge(k,nextKey(k,j),1+q*5,"rgba(255,180,84,.85)",[5,4]);
+    }
+  });
+  keys.forEach(k=>{                         // nodes
+    const p=pos[k], syms=k.split(",").map(Number);
+    g.beginPath(); g.arc(p.x,p.y,24,0,Math.PI*2);
+    g.fillStyle="#0D131F"; g.fill(); g.strokeStyle="#33425C"; g.lineWidth=1; g.stroke();
+    if(syms.length===1) drawGlyph(g,syms[0],p.x,p.y,26,"#E3EBF7");
+    else { drawGlyph(g,syms[0],p.x-10,p.y,18,"#8FA3C0"); drawGlyph(g,syms[1],p.x+10,p.y,18,"#E3EBF7"); }
+  });
+}
+function drawGlyph(g,i,cx,cy,size,color){
+  g.save();
+  g.translate(cx-size/2,cy-size/2); g.scale(size/100,size/100);
+  g.strokeStyle=color; g.lineWidth=7; g.lineCap="round"; g.lineJoin="round";
+  GPATH2D[i].forEach(p=>g.stroke(p));
+  g.restore();
+}
+
+/* ══ debrief ══════════════════════════════════════════════════════════ */
+let redraw=null;
+function gradeOf(s){ return s>=.85?"S":s>=.70?"A":s>=.55?"B":s>=.35?"C":"D"; }
+function renderDebrief(early){
+  const m=metrics(S.allTrials);
+  const first=S.blocks[0]?S.blocks[0].m.structure:0;
+  const last =S.blocks.length>1?S.blocks[S.blocks.length-1].m.structure:null;
+  const d=last!==null?last-first:null;
+
+  const g=gradeOf(m.structure);
+  const LOOK={
+    S:["linear-gradient(145deg,#57C7FF,#9B8CFF)","Signal locked"],
+    A:["linear-gradient(145deg,#57C7FF,#9B8CFF)","Signal decoded"],
+    B:["linear-gradient(145deg,#4FE0A8,#57C7FF)","Partial lock"],
+    C:["linear-gradient(145deg,#FFB454,#FF8A5B)","Weak trace"],
+    D:["linear-gradient(145deg,#FF6B7A,#9B5C8F)","Signal lost"]
+  };
+  $("db-eyebrow").textContent = early?"Run aborted":"Run complete";
+  $("db-grade").textContent = g;
+  $("db-grade").style.background = LOOK[g][0];
+  $("db-title").textContent = early?"Partial readout":LOOK[g][1];
+
+  const strat=m.strategy;
+  const sw = strat>.35 ? "hard maximising — you mostly took the likely branch"
+           : strat>.1  ? "tilted toward maximising"
+           : strat>-.1 ? "close to probability matching, mirroring the odds"
+           : "spread wider than the odds themselves";
+  $("db-lede").textContent =
+    m.n+" trials · "+S.blocks.length+" block"+(S.blocks.length>1?"s":"")+" · "+S.xp.toLocaleString()+" XP earned. "+
+    (m.structure<=0.02 ? "Your calls carried no more information than chance"
+                       : "You captured "+pct(m.structure)+"% of the predictive value on offer")+
+    (d!==null ? (d>=.05?", up "+pct(d)+" points from first block to last.":d<=-.05?", down "+pct(-d)+" points across blocks.":", holding flat across blocks."):".")+
+    " Strategy read as "+sw+".";
+
+  $("db-tiles").innerHTML=[
+    tile(fx(m.pi,2),"Perf. index","1.00 means your response distribution matched the real one exactly."),
+    tile(pct(m.structure)+"","Structure","0 is chance, 100 is the ceiling for any policy."),
+    tile((strat>=0?"+":"")+fx(strat,2),"Strategy","0 = probability matching, +1 = pure maximising."),
+    tile(pct(m.acc)+"%","Hit rate","Calls that matched the glyph that actually followed."),
+    tile(S.bestStreak+"","Best streak","Longest correct run. Luck counts here; it is not a measure."),
+    tile(Math.round(m.rt)+"","Median RT","Milliseconds from the red cue to your call.")
+  ].join("");
+
+  $("db-blocks").innerHTML=S.blocks.map(b=>
+    '<tr><td class="n">'+b.i+"</td><td>"+String(b.tierId).padStart(2,"0")+" · "+TIERS[b.tierId-1].code+
+    '</td><td class="n">'+b.m.n+'</td><td class="n">'+fx(b.m.pi,2)+'</td><td class="n">'+pct(b.m.structure)+
+    '</td><td class="n">'+pct(b.m.acc)+'%</td><td class="n">'+Math.round(b.m.rt)+"</td></tr>").join("");
+
+  const lastBlock=S.blocks[S.blocks.length-1];
+  $("db-dec-note").textContent =
+    (S.chain.order===0?"Base rates for each glyph — there was no context to read."
+     :S.chain.order===1?"Each node is a glyph; arrows are what could follow it."
+     :"Each node is a two-glyph context; arrows are what could follow it.")+
+    " Solid blue is the real chain, dashed amber is what you actually called in the last block."+
+    (S.chainSwaps>0?" The chain was rebuilt "+S.chainSwaps+" time"+(S.chainSwaps>1?"s":"")+" as your tier changed.":"");
+
+  const by=responseDist(lastBlock?lastBlock.trials:[]);
+  redraw=()=>drawDecoder($("db-canvas"),S.chain,by);
+  requestAnimationFrame(redraw);
+
+  $("csv-box").hidden=true; $("csv-note").textContent="";
+}
+function tile(v,k,n){ return '<div class="tile"><span class="v">'+v+'</span><span class="k">'+k+'</span><span class="n">'+n+"</span></div>"; }
+
+/* ══ csv ══════════════════════════════════════════════════════════════ */
+function buildCSV(){
+  const head=["run","started_at","block","trial","tier_id","tier_code","tier_name","markov_order",
+              "feedback","glyph_ms","context","p0","p1","p2","p3","sequence","response","actual","correct","rt_ms"];
+  const rows=[head.join(",")];
+  S.allTrials.forEach((t,i)=>{
+    const T=TIERS[t.tierId-1];
+    rows.push([S.id,S.startedAt.toISOString(),t.block,i+1,t.tierId,T.code,'"'+T.name+'"',T.order,
+      fbMode(),settings.dur,'"'+t.ctx+'"',fx(t.dist[0],3),fx(t.dist[1],3),fx(t.dist[2],3),fx(t.dist[3],3),
+      '"'+t.seq.join("|")+'"',t.resp,t.actual,(t.resp===t.actual?1:0),t.rt].join(","));
+  });
+  return rows.join("\n");
+}
+
+/* ══ wiring ═══════════════════════════════════════════════════════════ */
+function start(){
+  Sound.on=settings.sound!==false;
+  renderAlphabet(); renderStageOptions(); syncSetup(); renderHistory(); paintHud();
+  $("btn-sound").textContent=Sound.on?"♪":"✕";
+  $("btn-sound").style.color=Sound.on?"":"var(--muted)";
+
+  const bind=(id,key,cast)=>$(id).addEventListener("change",e=>{ settings[key]=cast(e.target.value); syncSetup(); });
+  bind("set-stage","stage",v=>v==="auto"?"auto":Number(v));
+  bind("set-blocks","blocks",Number); bind("set-trials","trials",Number);
+  bind("set-fb","fb",String); bind("set-dur","dur",Number); bind("set-chamber","chamber",String);
+
+  $("btn-start").addEventListener("click",startRun);
+  $("btn-again").addEventListener("click",startRun);
+  $("btn-abort").addEventListener("click",()=>finishRun(true));
+  $("btn-home").addEventListener("click",()=>{ abortAll(); show("home"); });
+  $("btn-clear").addEventListener("click",()=>{ history=[]; store.del("history"); renderHistory(); });
+  $("btn-sound").addEventListener("click",()=>{
+    Sound.on=!Sound.on; settings.sound=Sound.on; store.set("settings",settings);
+    $("btn-sound").textContent=Sound.on?"♪":"✕";
+    $("btn-sound").style.color=Sound.on?"":"var(--muted)";
+    if(Sound.on){ Sound.boot(); Sound.cue(); }
+  });
+  $("btn-csv").addEventListener("click",()=>{
+    const csv=buildCSV(), note=$("csv-note");
+    const fb=()=>{ const b=$("csv-box"); b.hidden=false; b.value=csv; b.focus(); b.select(); note.textContent="Select all and copy."; };
+    if(navigator.clipboard&&navigator.clipboard.writeText)
+      navigator.clipboard.writeText(csv).then(()=>{ note.textContent=S.allTrials.length+" trials copied."; },fb);
+    else fb();
+  });
+
+  window.addEventListener("resize",()=>{ if(redraw && !$("debrief").hidden) redraw(); });
+
+  const intro=$("intro");
+  let introOpen=true;
+  const close=()=>{ introOpen=false; intro.hidden=true; intro.style.display="none"; Sound.boot(); };
+  $("intro-enter").addEventListener("click",close);
+  $("intro-enter").focus({preventScroll:true});
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape") return;
+    if(introOpen){ close(); return; }
+    if(!$("run").hidden) finishRun(true);
+  });
+}
+
+if(window.claude&&window.claude.hot&&window.claude.hot.snapshot){
+  try{ window.claude.hot.snapshot(()=>({settings,profile,history})); }catch(e){}
+}
+function boot(data){
+  if(data&&data.settings) settings=Object.assign({},settings,data.settings);
+  if(data&&data.profile)  profile =Object.assign({},profile,data.profile);
+  if(data&&Array.isArray(data.history)&&data.history.length) history=data.history;
+  start();
+}
+if(window.claude&&window.claude.hot&&window.claude.hot.ready) window.claude.hot.ready(boot);
+else boot((window.claude&&window.claude.hot&&window.claude.hot.data)||{});
+})();
+</script>
+</body>
+</html>
